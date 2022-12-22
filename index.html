@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SendbirdLive Camera Filter Sample</title>
+    <style>
+        body {
+            margin: 0;
+        }
+
+        #main {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        input {
+            display: block;
+            box-sizing: border-box;
+            width: 30%;
+            height: 40px;
+            margin-bottom: 20px;
+            border: solid 1px #c9d0e6;
+            padding: 10px 16px;
+            border-radius: 4px;
+            background-color: #fff;
+        }
+
+        button {
+            display: block;
+            box-sizing: border-box;
+            width: 30%;
+            height: 40px;
+            background-color: #825eeb;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+        }
+
+        #close {
+            display: block;
+            cursor: pointer;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 20px;
+            width: 20px;
+            height: 20px;
+            border: none;
+            background-color: #fff;
+            color: #000;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body onload="setLoginView()">
+    <script src="https://cdn.jsdelivr.net/npm/@sendbird/live/sendbirdLive.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@banuba/webar/dist/BanubaSDK.browser.js"></script>
+    <script src="./tokens.js"></script>
+    <script>
+      var globalUserId = '';
+      var globalLive = sendbirdLive.SendbirdLive;
+      var globalLiveEvent = null;
+
+      function getMain() {
+        return document.getElementById('main');
+      }
+
+      function clearMain() {
+        const main = document.getElementById('main');
+        console.log(main);
+
+        main.replaceChildren();
+      }
+
+      function setLoginView() {
+        clearMain();
+        const main = getMain();
+        globalLive.init({ appId: window.SENDBIRD_APP_ID });
+
+        const userId = document.createElement('input');
+        userId.placeholder = 'User ID';
+        const loginButton = document.createElement('button');
+        loginButton.textContent = 'Sign in';
+        loginButton.onclick = async () => {
+          await globalLive.authenticate(userId.value);
+          globalUserId = userId.value;
+          setGoLiveView();
+        }
+
+        main.appendChild(userId);
+        main.appendChild(loginButton);
+      }
+
+      function setGoLiveView() {
+        clearMain();
+        const main = getMain();
+
+        const goLiveButton = document.createElement('button');
+        goLiveButton.textContent = 'Go Live';
+        goLiveButton.onclick = async () => {
+          globalLiveEvent = await globalLive.createLiveEvent({ userIdsForHost: [globalUserId] });
+          await globalLiveEvent.enterAsHost({
+            turnAudioOn: true,
+            turnVideoOn: true,
+            streamProcessor: async (stream) => replaceStream(stream),
+          });
+          await globalLiveEvent.startEvent({ turnAudioOn: true, turnVideoOn: true });
+          setLiveView();
+        }
+
+        main.appendChild(goLiveButton);
+      }
+
+      function setLiveView() {
+        clearMain();
+        const main = getMain();
+
+        const video = document.createElement('video');
+        video.autoplay = true;
+        video.muted = true;
+        const closeButton = document.createElement('button');
+        closeButton.id = 'close';
+        closeButton.textContent = 'X';
+        closeButton.onclick = () => {
+          globalLiveEvent.exitAsHost();
+          globalUserId = null;
+          globalLiveEvent = null;
+          setLoginView();
+        }
+
+        const hostId = globalLiveEvent.host.hostId;
+        globalLiveEvent.setVideoViewForLiveEvent(video, hostId); 
+
+        main.appendChild(video);
+        main.appendChild(closeButton);
+      }
+
+      const { Effect, MediaStreamCapture, Player, Module } = BanubaSDK;
+      const BanubaMediaStream = BanubaSDK.MediaStream;
+
+      async function replaceStream(localStream) {
+        try {
+          const player = await Player.create({ clientToken: window.BANUBA_CLIENT_TOKEN });
+          await player.addModule(new Module("https://cdn.jsdelivr.net/npm/@banuba/webar/dist/modules/background.zip"))
+          await player.addModule(new Module("https://cdn.jsdelivr.net/npm/@banuba/webar/dist/modules/face_tracker.zip"))
+
+          console.log('prepared player');
+          const webar = new MediaStreamCapture(player)
+          player.use(new BanubaMediaStream(localStream))
+          player.applyEffect(new Effect("./MonsterFactory.zip"))
+          player.play()
+
+          // original audio
+          const audio = localStream.getAudioTracks()[0]
+          // webar processed video
+          const video = webar.getVideoTracks()[0]
+
+          return new MediaStream([audio, video]);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    </script>
+    <div id="main">
+    </div>
+</body>
+</html>
